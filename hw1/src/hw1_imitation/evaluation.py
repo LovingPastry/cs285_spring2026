@@ -127,7 +127,8 @@ def evaluate_policy(
     step: int,
     logger: Logger,
 ) -> None:
-    """Evaluate a policy in the Push-T environment and log results to Weights & Biases.
+    """
+    Evaluate a policy in the Push-T environment and log results to Weights & Biases.
 
     This function runs a fixed number of evaluation episodes in the Push-T gym
     environment using the provided policy. It normalizes observations with the
@@ -138,7 +139,7 @@ def evaluate_policy(
     Metrics:
         - Logs the mean of per-episode maximum reward.
         - Optionally logs rendered rollout videos for the first
-          ``num_video_episodes`` episodes.
+          ```num_video_episodes``` episodes.
 
     Checkpointing:
         - Saves the policy as a ``.pkl`` file and uploads it as a W&B artifact

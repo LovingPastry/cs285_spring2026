@@ -1,0 +1,5 @@
+{
+    "ruff.lineLength": 200,
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "notebook.defaultFormatter": "charliermarsh.ruff"
+}

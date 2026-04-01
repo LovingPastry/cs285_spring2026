@@ -30,7 +30,7 @@ def basic_dqn_config(
     use_double_q: bool = False,
     learning_starts: int = 20000,
     batch_size: int = 128,
-    **kwargs
+    **kwargs,
 ):
     def make_critic(observation_shape: Tuple[int, ...], num_actions: int) -> nn.Module:
         return DQNCritic(
@@ -58,9 +58,7 @@ def basic_dqn_config(
     )
 
     def make_env(eval=False, render=False):
-        return RecordEpisodeStatistics(
-            gym.make(env_name, render_mode="rgb_array" if render else None)
-        )
+        return RecordEpisodeStatistics(gym.make(env_name, render_mode="rgb_array" if render else None))
 
     log_string = "{}_{}".format(
         env_name,
@@ -165,9 +163,7 @@ def atari_dqn_config(
         raise ImportError("Please install atari dependencies: pip install gym[atari,accept-rom-license]")
 
     def make_env(eval=False, render=False):
-        return wrap_deepmind(
-            gym.make(env_name, render_mode="rgb_array" if render else None)
-        )
+        return wrap_deepmind(gym.make(env_name, render_mode="rgb_array" if render else None))
 
     # Shorten env_name if it's too long (e.g., MsPacmanNoFrameskip-v0 -> MsPacman)
     short_env_name = env_name.replace("NoFrameskip-v0", "").replace("NoFrameskip-v4", "")

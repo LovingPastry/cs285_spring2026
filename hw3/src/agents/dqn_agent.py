@@ -15,9 +15,7 @@ class DQNAgent(nn.Module):
         num_actions: int,
         make_critic: Callable[[Tuple[int, ...], int], nn.Module],
         make_optimizer: Callable[[torch.nn.ParameterList], torch.optim.Optimizer],
-        make_lr_schedule: Callable[
-            [torch.optim.Optimizer], torch.optim.lr_scheduler._LRScheduler
-        ],
+        make_lr_schedule: Callable[[torch.optim.Optimizer], torch.optim.lr_scheduler._LRScheduler],
         discount: float,
         target_update_period: int,
         use_double_q: bool = False,
@@ -48,10 +46,13 @@ class DQNAgent(nn.Module):
         observation = ptu.from_numpy(np.asarray(observation))[None]
 
         # TODO(Section 2.4): get the action from the critic using an epsilon-greedy strategy
-        action = None
+        qa_values = self.critic(observation)
+        action = torch.argmax(qa_values, dim=1).item()
+        if np.random.rand() < epsilon:
+            action = np.random.randint(self.num_actions)
         # ENDTODO
 
-        return ptu.to_numpy(action).squeeze(0).item()
+        return int(action)
 
     def update_critic(
         self,

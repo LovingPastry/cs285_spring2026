@@ -57,25 +57,19 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         stacked_frames = True
         frame_history_len = env.observation_space.shape[0]
         assert frame_history_len == 4, "only support 4 stacked frames"
-        replay_buffer = MemoryEfficientReplayBuffer(
-            frame_history_len=frame_history_len
-        )
+        replay_buffer = MemoryEfficientReplayBuffer(frame_history_len=frame_history_len)
     elif len(env.observation_space.shape) == 1:
         stacked_frames = False
         replay_buffer = ReplayBuffer()
     else:
-        raise ValueError(
-            f"Unsupported observation space shape: {env.observation_space.shape}"
-        )
+        raise ValueError(f"Unsupported observation space shape: {env.observation_space.shape}")
 
     def reset_env_training():
         nonlocal observation
 
         observation = env.reset()
 
-        assert not isinstance(
-            observation, tuple
-        ), "env.reset() must return np.ndarray - make sure your Gym version uses the old step API"
+        assert not isinstance(observation, tuple), "env.reset() must return np.ndarray - make sure your Gym version uses the old step API"
         observation = np.asarray(observation)
 
         if isinstance(replay_buffer, MemoryEfficientReplayBuffer):
@@ -87,7 +81,7 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         epsilon = exploration_schedule.value(step)
 
         # TODO(Section 2.4): Compute action
-        action = None
+        action = agent.get_action(observation, epsilon)
         # ENDTODO
 
         next_observation, reward, done, info = env.step(action)
@@ -118,23 +112,26 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         if done:
             reset_env_training()
 
-            logger.log({
-                "Train_EpisodeReturn": info["episode"]["r"],
-                "Train_EpisodeLen": info["episode"]["l"],
-            }, step)
+            logger.log(
+                {
+                    "Train_EpisodeReturn": info["episode"]["r"],
+                    "Train_EpisodeLen": info["episode"]["l"],
+                },
+                step,
+            )
         else:
             observation = next_observation
 
         # Main DQN training loop
         if step >= config["learning_starts"]:
             # TODO(Section 2.4): Sample config["batch_size"] samples from the replay buffer
-            batch = None
+            batch = replay_buffer.sample(config["batch_size"])
             # ENDTODO
 
             batch = ptu.from_numpy(batch)
 
             # TODO(Section 2.4): Train the agent.
-            update_info = None
+            update_info = agent.update(obs=batch["observations"], action=batch["actions"], reward=batch["rewards"], next_obs=batch["next_observations"], done=batch["dones"], step=step)
             # ENDTODO
 
             # Logging code
@@ -201,9 +198,7 @@ def make_config(config_file: str) -> dict:
 
 
 def make_logger(config: dict, args: argparse.Namespace) -> Logger:
-    logdir = "{}_sd{}_{}".format(
-        config["log_name"], args.seed, time.strftime("%Y%m%d_%H%M%S")
-    )
+    logdir = "{}_sd{}_{}".format(config["log_name"], args.seed, time.strftime("%Y%m%d_%H%M%S"))
     logdir = os.path.join("exp", logdir)
     os.makedirs(logdir, exist_ok=True)
 

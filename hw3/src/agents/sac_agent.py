@@ -15,16 +15,10 @@ class SoftActorCritic(nn.Module):
         action_dim: int,
         make_actor: Callable[[Tuple[int, ...], int], nn.Module],
         make_actor_optimizer: Callable[[torch.nn.ParameterList], torch.optim.Optimizer],
-        make_actor_schedule: Callable[
-            [torch.optim.Optimizer], torch.optim.lr_scheduler._LRScheduler
-        ],
+        make_actor_schedule: Callable[[torch.optim.Optimizer], torch.optim.lr_scheduler._LRScheduler],
         make_critic: Callable[[Tuple[int, ...], int], nn.Module],
-        make_critic_optimizer: Callable[
-            [torch.nn.ParameterList], torch.optim.Optimizer
-        ],
-        make_critic_schedule: Callable[
-            [torch.optim.Optimizer], torch.optim.lr_scheduler._LRScheduler
-        ],
+        make_critic_optimizer: Callable[[torch.nn.ParameterList], torch.optim.Optimizer],
+        make_critic_schedule: Callable[[torch.optim.Optimizer], torch.optim.lr_scheduler._LRScheduler],
         discount: float,
         target_update_period: Optional[int] = None,
         soft_target_update_rate: Optional[float] = None,
@@ -48,29 +42,17 @@ class SoftActorCritic(nn.Module):
             "mean",
         ], f"{target_critic_backup_type} is not a valid target critic backup type"
 
-        assert (
-            target_update_period is not None or soft_target_update_rate is not None
-        ), "Must specify either target_update_period or soft_target_update_rate"
+        assert target_update_period is not None or soft_target_update_rate is not None, "Must specify either target_update_period or soft_target_update_rate"
 
         self.actor = make_actor(observation_shape, action_dim)
         self.actor_optimizer = make_actor_optimizer(self.actor.parameters())
         self.actor_lr_scheduler = make_actor_schedule(self.actor_optimizer)
 
-        self.critics = nn.ModuleList(
-            [
-                make_critic(observation_shape, action_dim)
-                for _ in range(num_critic_networks)
-            ]
-        )
+        self.critics = nn.ModuleList([make_critic(observation_shape, action_dim) for _ in range(num_critic_networks)])
 
         self.critic_optimizer = make_critic_optimizer(self.critics.parameters())
         self.critic_lr_scheduler = make_critic_schedule(self.critic_optimizer)
-        self.target_critics = nn.ModuleList(
-            [
-                make_critic(observation_shape, action_dim)
-                for _ in range(num_critic_networks)
-            ]
-        )
+        self.target_critics = nn.ModuleList([make_critic(observation_shape, action_dim) for _ in range(num_critic_networks)])
 
         self.observation_shape = observation_shape
         self.action_dim = action_dim
@@ -133,9 +115,7 @@ class SoftActorCritic(nn.Module):
         """
         Compute the (ensembled) target Q-values for the given state-action pair.
         """
-        return torch.stack(
-            [critic(obs, action) for critic in self.target_critics], dim=0
-        )
+        return torch.stack([critic(obs, action) for critic in self.target_critics], dim=0)
 
     def q_backup_strategy(self, next_qs: torch.Tensor) -> torch.Tensor:
         """
@@ -153,9 +133,7 @@ class SoftActorCritic(nn.Module):
                 Leading dimension corresponds to target values FOR the different critics.
         """
 
-        assert (
-            next_qs.ndim == 2
-        ), f"next_qs should have shape (num_critics, batch_size) but got {next_qs.shape}"
+        assert next_qs.ndim == 2, f"next_qs should have shape (num_critics, batch_size) but got {next_qs.shape}"
         num_critic_networks, batch_size = next_qs.shape
         assert num_critic_networks == self.num_critic_networks
 
@@ -165,9 +143,7 @@ class SoftActorCritic(nn.Module):
         elif self.target_critic_backup_type == "min":
             next_qs = None
         else:
-            raise ValueError(
-                f"Invalid critic backup strategy {self.target_critic_backup_type}"
-            )
+            raise ValueError(f"Invalid critic backup strategy {self.target_critic_backup_type}")
         # ENDTODO
 
         # If our backup strategy removed a dimension, add it back in explicitly
@@ -197,14 +173,15 @@ class SoftActorCritic(nn.Module):
         # Compute target values
         with torch.no_grad():
             # TODO(Section 3.2): Sample from the actor and compute next Q-values
-            next_action_distribution = None
-            next_action = None
-            next_qs = None
+            next_action_distribution = self.actor(next_obs)
+            next_action = next_action_distribution.sample()
+            next_qs = self.target_critic(next_obs, next_action)
             # ENDTODO
 
             if self.use_entropy_bonus and self.backup_entropy:
                 # TODO(Section 3.3): Add entropy bonus to the target values for SAC
-                next_action_entropy = None
+                next_action_entropy = self.entropy(next_action_distribution)
+                next_qs += self.temperature * next_action_entropy
                 # Hint: next_qs = ...
                 # ENDTODO
 
@@ -217,7 +194,7 @@ class SoftActorCritic(nn.Module):
             ), next_qs.shape
 
             # TODO(Section 3.2): Compute the target Q-value
-            target_values = None
+            target_values = reward + self.discount * (1.0 - done.float()) * next_qs
             # ENDTODO
             assert target_values.shape == (
                 self.num_critic_networks,
@@ -226,11 +203,11 @@ class SoftActorCritic(nn.Module):
 
         # TODO(Section 3.2): Update the critic
         # Predict Q-values
-        q_values = None
+        q_values = self.critic(obs, action)
         assert q_values.shape == (self.num_critic_networks, batch_size), q_values.shape
 
         # Compute loss
-        loss = None
+        loss = self.critic_loss(q_values, target_values)
         # ENDTODO
 
         self.critic_optimizer.zero_grad()
@@ -250,7 +227,9 @@ class SoftActorCritic(nn.Module):
 
         # TODO(Section 3.3): Compute the entropy of the action distribution.
         # Note: Think about whether to use .rsample() or .sample() here...
-        return None
+        a = action_distribution.rsample()
+        logp = action_distribution.log_prob(a)
+        return -logp
         # ENDTODO
 
     def actor_loss_reparametrize(self, obs: torch.Tensor):
@@ -259,22 +238,22 @@ class SoftActorCritic(nn.Module):
         # Sample from the actor
         action_distribution: torch.distributions.Distribution = self.actor(obs)
 
-        # TODO(Section 3.4): Sample actions using reparameterization (replace the placeholder below)
+        # TODO(Section 3.4): Sample actions using reparameterization
         # Note: Think about whether to use .rsample() or .sample() here, and why...
-        action = torch.zeros(batch_size, self.action_dim, device=obs.device) # replace this with the correct action
+        action = action_distribution.rsample()
         assert action.shape == (batch_size, self.action_dim), action.shape
         # ENDTODO
 
-        # TODO(Section 3.4): Compute Q-values for the sampled state-action pair (replace the placeholder below)
-        q_values = torch.zeros(self.num_critic_networks, batch_size, device=obs.device) # replace this with the correct q_values
+        # TODO(Section 3.4): Compute Q-values for the sampled state-action pair
+        q_values = self.critic(obs, action)  # SAC通常使用Double Q，因此要取最小值
         assert q_values.shape == (self.num_critic_networks, batch_size), q_values.shape
         # ENDTODO
 
         # Compute log probabilities for alpha update (Section 3.5)
         log_prob = action_distribution.log_prob(action)
 
-        # TODO(Section 3.4): Compute the actor loss (replace the placeholder below)
-        loss = torch.tensor(0.0, device=obs.device) # replace this with the correct loss
+        # TODO(Section 3.4): Compute the actor loss
+        loss = -torch.mean(torch.min(q_values, dim=0)[0])
         # ENDTODO
 
         return loss, torch.mean(self.entropy(action_distribution)), log_prob
@@ -286,7 +265,7 @@ class SoftActorCritic(nn.Module):
         loss, entropy, log_prob = self.actor_loss_reparametrize(obs)
 
         # TODO(Section 3.3): Add the entropy bonus to the actor loss: loss -= [your entropy bonus here]
-        pass
+        loss -= self.temperature * entropy
         # ENDTODO
 
         self.actor_optimizer.zero_grad()
@@ -336,12 +315,8 @@ class SoftActorCritic(nn.Module):
 
     def soft_update_target_critic(self, tau):
         for target_critic, critic in zip(self.target_critics, self.critics):
-            for target_param, param in zip(
-                target_critic.parameters(), critic.parameters()
-            ):
-                target_param.data.copy_(
-                    target_param.data * (1.0 - tau) + param.data * tau
-                )
+            for target_param, param in zip(target_critic.parameters(), critic.parameters()):
+                target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
 
     def update(
         self,
@@ -359,12 +334,12 @@ class SoftActorCritic(nn.Module):
         critic_infos = []
         # TODO(Section 3.2): Update the critic for num_critic_updates steps
         for _ in range(self.num_critic_updates):
-            info = None
+            info = self.update_critic(obs=observations, action=actions, reward=rewards, next_obs=next_observations, done=dones)
             critic_infos.append(info)
         # ENDTODO
 
         # TODO(Section 3.3): Enable the actor update (once you have implemented entropy)
-        actor_info = {}
+        actor_info = self.update_actor(obs=observations)
         # ENDTODO
 
         # Update alpha (temperature) using dual gradient descent (Section 3.5)
@@ -378,13 +353,18 @@ class SoftActorCritic(nn.Module):
         #  - step
         #  - self.target_update_period (None when using soft updates)
         #  - self.soft_target_update_rate (None when using hard updates)
-        pass
+        if self.target_update_period is not None:
+            # hard updates
+            if step % self.target_update_period == 0:
+                self.update_target_critic()
+        else:
+            # soft updates
+            self.soft_update_target_critic(self.soft_target_update_rate)
+
         # ENDTODO
 
         # Average the critic info over all of the steps
-        critic_info = {
-            k: np.mean([info[k] for info in critic_infos]) for k in critic_infos[0]
-        }
+        critic_info = {k: np.mean([info[k] for info in critic_infos]) for k in critic_infos[0]}
 
         # Deal with LR scheduling
         self.actor_lr_scheduler.step()
